@@ -26,8 +26,6 @@ pub fn derive_type_layout(input: TokenStream) -> TokenStream {
 
                 #layout
 
-                fields.sort_by_key(|f| f.offset);
-
                 ::type_layout::TypeLayoutInfo {
                     name: ::std::borrow::Cow::Borrowed(::std::any::type_name::<Self>()),
                     size: std::mem::size_of::<#name #ty_generics>(),
@@ -57,11 +55,16 @@ fn layout_of_type(struct_name: &Ident, ty_generics: &TypeGenerics, data: &Data) 
                             let size = ::std::mem::size_of::<#field_ty>();
                             let offset = ::type_layout::memoffset::offset_of!(#struct_name #ty_generics, #field_name);
 
-                            fields.push(::type_layout::Field {
+                            if offset > last_field_end {
+                                fields.push(::type_layout::Field::Padding {
+                                    size: offset - last_field_end
+                                });
+                            }
+
+                            fields.push(::type_layout::Field::Field {
                                 name: ::std::borrow::Cow::Borrowed(#field_name_str),
                                 ty: ::std::borrow::Cow::Borrowed(::std::any::type_name::<#field_ty>()),
                                 size,
-                                offset,
                             });
 
                             last_field_end = offset + size;
@@ -71,6 +74,13 @@ fn layout_of_type(struct_name: &Ident, ty_generics: &TypeGenerics, data: &Data) 
 
                 quote! {
                     #(#values)*
+
+                    let struct_size = ::std::mem::size_of::<#struct_name>();
+                    if struct_size > last_field_end {
+                        fields.push(::type_layout::Field::Padding {
+                            size: struct_size - last_field_end,
+                        });
+                    }
                 }
             }
             Fields::Unnamed(_) => unimplemented!(),
